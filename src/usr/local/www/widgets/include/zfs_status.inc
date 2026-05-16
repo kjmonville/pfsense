@@ -24,88 +24,75 @@
 $zfs_status_title = gettext("ZFS Pools");
 
 /*
- * get_zpool_list()
+ * get_zpool_json()
  *
- * Parses the output of 'zpool list -H' and returns an associative array
- * keyed by pool name, with keys: name, size, alloc, free, ckpoint,
- * expandsz, frag, cap, dedup, health, altroot.
+ * Runs 'zpool status -j --json-int' and 'zpool list -j --json-int' and
+ * merges results into an associative array keyed by pool name. Each entry
+ * contains all health, vdev-tree, scan, and capacity data in one place.
+ *
+ * Pool array keys:
+ *   name, state, status, action, see, scan, errors, config (vdev tree),
+ *   size, alloc, free, frag, cap, dedup
  */
-function get_zpool_list() {
-	$returnArray = array();
+function get_zpool_json() {
+	$result = [];
 
-	exec("/sbin/zpool list -H", $zpoolListOutput);
+	exec('/sbin/zpool status -j --json-int 2>/dev/null', $statusOut, $statusRet);
+	exec('/sbin/zpool list   -j          2>/dev/null', $listOut,   $listRet);
 
-	if (empty($zpoolListOutput)) {
-		return $returnArray;
+	$statusPools = ($statusRet === 0)
+		? (json_decode(implode('', $statusOut), true)['pools'] ?? [])
+		: [];
+	$listPools = ($listRet === 0)
+		? (json_decode(implode('', $listOut), true)['pools'] ?? [])
+		: [];
+
+	foreach ($statusPools as $name => $pool) {
+		$props = $listPools[$name]['properties'] ?? [];
+		$result[$name] = [
+			'name'        => $name,
+			'state'       => $pool['state']       ?? '',
+			'status'      => $pool['status']      ?? '',
+			'action'      => $pool['action']      ?? '',
+			'see'         => $pool['see']         ?? '',
+			'scan'        => $pool['scan']        ?? [],
+			'error_count' => $pool['error_count'] ?? 0,
+			'vdevs'       => $pool['vdevs']       ?? [],
+			'size'        => $props['size']['value']          ?? '-',
+			'alloc'       => $props['allocated']['value']     ?? '-',
+			'free'        => $props['free']['value']          ?? '-',
+			'frag'        => $props['fragmentation']['value'] ?? '-',
+			'cap'         => $props['capacity']['value']      ?? '-',
+			'dedup'       => $props['dedupratio']['value']    ?? '-',
+		];
 	}
 
-	foreach ($zpoolListOutput as $zpool) {
-		$fields = array_pad(preg_split("/\s+/", $zpool), 11, '');
-		[$poolName, $poolSize, $poolAlloc, $poolFree, $poolCkpoint,
-		 $poolExpandsz, $poolFrag, $poolCap, $poolDedup,
-		 $poolHealth, $poolAltroot] = $fields;
-
-		$returnArray[$poolName]['name']     = $poolName;
-		$returnArray[$poolName]['size']     = $poolSize;
-		$returnArray[$poolName]['alloc']    = $poolAlloc;
-		$returnArray[$poolName]['free']     = $poolFree;
-		$returnArray[$poolName]['ckpoint']  = $poolCkpoint;
-		$returnArray[$poolName]['expandsz'] = $poolExpandsz;
-		$returnArray[$poolName]['frag']     = $poolFrag;
-		$returnArray[$poolName]['cap']      = $poolCap;
-		$returnArray[$poolName]['dedup']    = $poolDedup;
-		$returnArray[$poolName]['health']   = $poolHealth;
-		$returnArray[$poolName]['altroot']  = $poolAltroot;
-	}
-
-	return $returnArray;
+	return $result;
 }
 
 /*
- * get_zpool_status($poolName)
+ * parse_vdev_tree($vdev, $depth)
  *
- * Parses the output of 'zpool status -v <poolName>' and returns an indexed
- * array of vdev rows from the config: section, each with keys:
- * name, state, read, write, cksum.
+ * Recursively walks a vdev subtree from 'zpool status -j' and returns a
+ * flat array of rows, each with: name, type, state, read, write, cksum,
+ * depth. depth=0 is a top-level vdev group (mirror-0, raidz1-0, sda, etc.).
  */
-function get_zpool_status($poolName) {
-	$returnArray = array();
-	$i = 0;
-	$inConfig = false;
+function parse_vdev_tree($vdev, $depth = 0) {
+	$rows = [[
+		'name'  => $vdev['name']            ?? '',
+		'type'  => $vdev['vdev_type']       ?? '',
+		'state' => $vdev['state']           ?? '',
+		'read'  => $vdev['read_errors']     ?? 0,
+		'write' => $vdev['write_errors']    ?? 0,
+		'cksum' => $vdev['checksum_errors'] ?? 0,
+		'depth' => $depth,
+	]];
 
-	// poolName is missing or contains invalid characters
-	if (!preg_match('/^[a-zA-Z0-9][a-zA-Z0-9_\-.:]*$/', $poolName)) {
-		return $returnArray;
+	foreach ($vdev['vdevs'] ?? [] as $child) {
+		$rows = array_merge($rows, parse_vdev_tree($child, $depth + 1));
 	}
 
-	exec("/sbin/zpool status -v " . escapeshellarg($poolName), $zpoolStatusLines);
-
-	foreach ($zpoolStatusLines as $statusLine) {
-		if ($statusLine == "config:") {
-			$inConfig = true;
-			continue;
-		} elseif (preg_match("/^errors:.*$/", $statusLine)) {
-			$inConfig = false;
-			continue;
-		} elseif ($inConfig) {
-			if ($statusLine == "" || preg_match("/^\s+NAME\s+STATE.*?/", $statusLine)) {
-				continue;
-			}
-
-			$fields = array_pad(preg_split("/\s+/", ltrim($statusLine)), 5, '');
-			[$poolStatusName, $poolStatusState, $poolStatusRead,
-			 $poolStatusWrite, $poolStatusCksum] = $fields;
-
-			$returnArray[$i]['name']  = $poolStatusName;
-			$returnArray[$i]['state'] = $poolStatusState;
-			$returnArray[$i]['read']  = $poolStatusRead;
-			$returnArray[$i]['write'] = $poolStatusWrite;
-			$returnArray[$i]['cksum'] = $poolStatusCksum;
-			$i++;
-		}
-	}
-
-	return $returnArray;
+	return $rows;
 }
 
 /*
@@ -126,7 +113,7 @@ function health_color($health) {
 
 function zfs_status_create_table($widgetkey) {
 	$date = date('m/d/Y h:i:s a', time());
-	$zpools = get_zpool_list();
+	$zpools = get_zpool_json();
 
 	if (count($zpools) < 1) {
 		ob_start();
@@ -167,7 +154,7 @@ function zfs_status_create_pool_rows($zpoolListData) {
 		$output .=	"<tr class=\"treegrid-{$treegridRootClass}\">";
 		$output .=		"<td>{$safeName}</td>";
 		$output .=		'<td>';
-		$output .=			"<span class=\"" . health_color($zpool['health']) . "\">" . htmlspecialchars($zpool['health'], ENT_QUOTES, 'UTF-8') . "</span>";
+		$output .=			"<span class=\"" . health_color($zpool['state']) . "\">" . htmlspecialchars($zpool['state'], ENT_QUOTES, 'UTF-8') . "</span>";
 		$output .=		'</td>';
 		$output .=		"<td>" . htmlspecialchars($zpool['size'],  ENT_QUOTES, 'UTF-8') . "</td>";
 		$output .=		"<td>" . htmlspecialchars($zpool['alloc'], ENT_QUOTES, 'UTF-8') . "</td>";
@@ -188,7 +175,7 @@ function zfs_status_create_pool_rows($zpoolListData) {
 		$output .=						'</tr>';
 		$output .=					'</thead>';
 		$output .=					'<tbody>';
-		$output .=						zfs_status_create_detail_table($zpool['name']);
+		$output .=						zfs_status_create_detail_table($zpool);
 		$output .=					'</tbody>';
 		$output .=				'</table>';
 		$output .=			'</div>';
@@ -200,27 +187,29 @@ function zfs_status_create_pool_rows($zpoolListData) {
 }
 
 /*
- * zfs_status_create_detail_table($pool)
+ * zfs_status_create_detail_table($poolData)
  *
- * Renders the vdev detail rows for a single pool. Indentation is conveyed
- * via Bootstrap text-muted prefix characters rather than inline styles.
+ * Renders the vdev detail rows for a single pool by recursively walking the
+ * nested vdev tree from get_zpool_json(). Indentation depth reflects the
+ * actual vdev hierarchy (pool → mirror/raidz → leaf disk).
  */
-function zfs_status_create_detail_table($pool) {
-	$output = "";
-	$zpoolStatusData = get_zpool_status($pool);
+function zfs_status_create_detail_table($poolData) {
+	$output = '';
 
-	foreach ($zpoolStatusData as $i => $entry) {
-		$indent = ($i > 1) ? str_repeat("\xc2\xa0\xc2\xa0", 2) : str_repeat("\xc2\xa0\xc2\xa0", $i);
+	foreach ($poolData['vdevs'] ?? [] as $vdev) {
+		foreach (parse_vdev_tree($vdev) as $row) {
+			$indent = str_repeat("\xc2\xa0\xc2\xa0", $row['depth'] * 2);
 
-		$output .=	'<tr>';
-		$output .=		"<th>" . $indent . htmlspecialchars($entry['name'],  ENT_QUOTES, 'UTF-8') . "</th>";
-		$output .=		'<td>';
-		$output .=			"<span class=\"" . health_color($entry['state']) . "\">" . htmlspecialchars($entry['state'], ENT_QUOTES, 'UTF-8') . "</span>";
-		$output .=		'</td>';
-		$output .=		"<td>" . htmlspecialchars($entry['read'],  ENT_QUOTES, 'UTF-8') . "</td>";
-		$output .=		"<td>" . htmlspecialchars($entry['write'], ENT_QUOTES, 'UTF-8') . "</td>";
-		$output .=		"<td>" . htmlspecialchars($entry['cksum'], ENT_QUOTES, 'UTF-8') . "</td>";
-		$output .=	'</tr>';
+			$output .=	'<tr>';
+			$output .=		"<th>{$indent}" . htmlspecialchars($row['name'], ENT_QUOTES, 'UTF-8') . "</th>";
+			$output .=		'<td>';
+			$output .=			"<span class=\"" . health_color($row['state']) . "\">" . htmlspecialchars($row['state'], ENT_QUOTES, 'UTF-8') . "</span>";
+			$output .=		'</td>';
+			$output .=		'<td>' . (int)$row['read']  . '</td>';
+			$output .=		'<td>' . (int)$row['write'] . '</td>';
+			$output .=		'<td>' . (int)$row['cksum'] . '</td>';
+			$output .=	'</tr>';
+		}
 	}
 
 	return $output;
