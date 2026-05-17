@@ -21,7 +21,8 @@
  */
 
 //set variable for custom title
-$zfs_status_title = gettext("ZFS Pools");
+$zfs_status_title      = gettext("ZFS Pools");
+$zfs_status_title_link = 'status_zfs_detail.php';
 
 /*
  * get_zpool_json()
@@ -162,8 +163,9 @@ function zfs_status_create_pool_rows($zpoolListData) {
 		$treegridRootClass   = "root-{$safeName}";
 		$treegridDetailClass = "detail-{$safeName}";
 
+		$safePool = urlencode($zpool['name']);
 		$output .=	"<tr class=\"treegrid-{$treegridRootClass}\">";
-		$output .=		"<td>{$safeName}</td>";
+		$output .=		"<td><a href=\"status_zfs_detail.php?pool={$safePool}\">{$safeName}</a></td>";
 		$output .=		'<td>';
 		$output .=			"<span class=\"" . health_color($zpool['state']) . "\">" . htmlspecialchars($zpool['state'], ENT_QUOTES, 'UTF-8') . "</span>";
 		$output .=		'</td>';
@@ -207,6 +209,24 @@ function zfs_status_create_pool_rows($zpoolListData) {
 function zfs_status_create_detail_table($poolData) {
 	$output = '';
 
+	// Status row — pool-level warning message (e.g. unsupported features)
+	$statusMsg = trim($poolData['status'] ?? '');
+	if ($statusMsg !== '') {
+		$output .= '<tr><td colspan="5"><small>'
+		         . '<i class="fa-solid fa-triangle-exclamation text-warning"></i> '
+		         . htmlspecialchars($statusMsg, ENT_QUOTES, 'UTF-8')
+		         . '</small></td></tr>';
+	}
+
+	// Action row — recommended remediation string
+	$actionMsg = trim($poolData['action'] ?? '');
+	if ($actionMsg !== '') {
+		$output .= '<tr><td colspan="5"><small class="text-muted">'
+		         . htmlspecialchars($actionMsg, ENT_QUOTES, 'UTF-8')
+		         . '</small></td></tr>';
+	}
+
+	// Vdev tree rows
 	foreach ($poolData['vdevs'] ?? [] as $vdev) {
 		foreach (parse_vdev_tree($vdev) as $row) {
 			$indent = str_repeat("\xc2\xa0\xc2\xa0", $row['depth'] * 2);
@@ -222,6 +242,19 @@ function zfs_status_create_detail_table($poolData) {
 			$output .=	'</tr>';
 		}
 	}
+
+	// Errors row — always last, fixed-width font
+	$errorCount = (int)($poolData['error_count'] ?? 0);
+	if ($errorCount === 0) {
+		$errText  = gettext('No known data errors');
+		$errClass = '';
+	} else {
+		$errText  = sprintf(gettext('%d data error(s) — see detail page for list'), $errorCount);
+		$errClass = ' class="text-danger"';
+	}
+	$output .= "<tr><td colspan=\"5\"><code{$errClass}>"
+	         . htmlspecialchars($errText, ENT_QUOTES, 'UTF-8')
+	         . '</code></td></tr>';
 
 	return $output;
 }

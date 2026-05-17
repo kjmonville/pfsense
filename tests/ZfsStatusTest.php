@@ -496,9 +496,11 @@ class ZfsStatusTest extends TestCase {
 	// zfs_status_create_detail_table()
 	// -------------------------------------------------------------------------
 
-	public function test_detail_table_empty_vdevs_returns_empty_string(): void {
-		$pool = ['vdevs' => []];
-		$this->assertEquals('', zfs_status_create_detail_table($pool));
+	public function test_detail_table_empty_vdevs_still_renders_errors_row(): void {
+		$pool = ['vdevs' => [], 'error_count' => 0];
+		$html = zfs_status_create_detail_table($pool);
+		$this->assertStringContainsString('<code>', $html);
+		$this->assertStringContainsString('No known data errors', $html);
 	}
 
 	public function test_detail_table_mirror_pool_contains_expected_names(): void {
