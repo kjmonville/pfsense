@@ -34,11 +34,22 @@ $zfs_status_title = gettext("ZFS Pools");
  *   name, state, status, action, see, scan, errors, config (vdev tree),
  *   size, alloc, free, frag, cap, dedup
  */
-function get_zpool_json() {
+function get_zpool_json(?callable $runner = null) {
 	$result = [];
 
-	exec('/sbin/zpool status -j --json-int 2>/dev/null', $statusOut, $statusRet);
-	exec('/sbin/zpool list   -j          2>/dev/null', $listOut,   $listRet);
+	if ($runner === null) {
+		$runner = static function(string $cmd, array &$out, int &$ret): void {
+			exec($cmd, $out, $ret);
+		};
+	}
+
+	$statusOut = [];
+	$statusRet = 0;
+	$runner('/sbin/zpool status -j --json-int 2>/dev/null', $statusOut, $statusRet);
+
+	$listOut = [];
+	$listRet = 0;
+	$runner('/sbin/zpool list   -j          2>/dev/null', $listOut, $listRet);
 
 	$statusPools = ($statusRet === 0)
 		? (json_decode(implode('', $statusOut), true)['pools'] ?? [])
