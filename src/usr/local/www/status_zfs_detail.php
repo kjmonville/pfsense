@@ -30,9 +30,10 @@
 require_once('guiconfig.inc');
 require_once('/usr/local/www/widgets/include/zfs_status.inc');
 
-$pool       = $_GET['pool'] ?? '';
-$validPools = array_keys(get_zpool_json());
-$poolError  = false;
+$pool        = $_GET['pool'] ?? '';
+$validPools  = array_keys(get_zpool_json());
+$poolError   = false;
+$outputText  = '';
 
 if ($pool !== '' && !in_array($pool, $validPools, true)) {
 	$poolError = true;
@@ -61,22 +62,34 @@ include('head.inc');
 <div class="panel panel-default">
 	<div class="panel-heading">
 		<h2 class="panel-title">
-<?php if ($pool !== '' && !$poolError): ?>
+<?php
+		if ($pool !== '' && !$poolError) {
+?>
 			<?=htmlspecialchars($pool, ENT_QUOTES, 'UTF-8')?>
-<?php else: ?>
+<?php
+		} else {
+?>
 			<?=gettext('All Pools')?>
-<?php endif; ?>
+<?php
+		}
+?>
 		</h2>
 	</div>
 	<div class="panel-body">
-<?php if ($poolError): ?>
-		<?php print_info_box(gettext('Invalid pool name.'), 'danger', false); ?>
-<?php elseif (empty($validPools)): ?>
-		<?php print_info_box(gettext('No ZFS pools found.'), 'warning', false); ?>
-<?php else: ?>
+<?php
+	if ($poolError) {
+		print_info_box(gettext('Invalid pool name.'), 'danger', false);
+	} elseif (empty($validPools)) {
+		print_info_box(gettext('No ZFS pools found.'), 'warning', false);
+	} else {
+?>
 		<pre><?=htmlspecialchars($outputText, ENT_QUOTES, 'UTF-8')?></pre>
-<?php endif; ?>
+<?php
+	}
+?>
 	</div>
 </div>
 
-<?php include('foot.inc'); ?>
+<?php
+include('foot.inc');
+?>

@@ -50,7 +50,9 @@ if (isset($_POST['ajax'])) {
 ?>
 
 <div class="table-responsive">
-	<?php print(zfs_status_create_table($widgetkey)); ?>
+<?php
+	print(zfs_status_create_table($widgetkey));
+?>
 </div>
 
 <script type="text/javascript">
