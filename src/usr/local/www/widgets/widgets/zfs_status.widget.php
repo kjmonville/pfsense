@@ -105,6 +105,10 @@ events.push(function(){
 			saveStateName: zfsCookie,
 			saveState: true
 		});
+
+		// treegrid injects indent/expander spans into the first td of every row,
+		// including detail rows where they serve no purpose and create whitespace.
+		zfsTree.find('tr[class*="treegrid-detail-"] > td > .treegrid-indent, tr[class*="treegrid-detail-"] > td > .treegrid-expander').remove();
 	}
 
 	initTreegrid(false);
