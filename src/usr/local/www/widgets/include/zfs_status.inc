@@ -91,12 +91,12 @@ function get_zpool_json(?callable $runner = null) {
  */
 function parse_vdev_tree($vdev, $depth = 0) {
 	$rows = [[
-		'name'  => $vdev['name']            ?? '',
-		'type'  => $vdev['vdev_type']       ?? '',
-		'state' => $vdev['state']           ?? '',
-		'read'  => $vdev['read_errors']     ?? 0,
-		'write' => $vdev['write_errors']    ?? 0,
-		'cksum' => $vdev['checksum_errors'] ?? 0,
+		'name'  => $vdev['name']                            ?? '',
+		'type'  => $vdev['vdev_type']                       ?? '',
+		'state' => display_vdev_state($vdev['state']        ?? ''),
+		'read'  => $vdev['read_errors']                     ?? 0,
+		'write' => $vdev['write_errors']                    ?? 0,
+		'cksum' => $vdev['checksum_errors']                 ?? 0,
 		'depth' => $depth,
 	]];
 
@@ -105,6 +105,17 @@ function parse_vdev_tree($vdev, $depth = 0) {
 	}
 
 	return $rows;
+}
+
+/*
+ * display_vdev_state($state)
+ *
+ * Translates internal ZFS JSON state names to the display names used by the
+ * zpool text output. CANT_OPEN is the primary case: the JSON API uses the
+ * internal enum value while the text output shows the user-facing UNAVAIL.
+ */
+function display_vdev_state(string $state): string {
+	return ['CANT_OPEN' => 'UNAVAIL'][$state] ?? $state;
 }
 
 /*
@@ -179,6 +190,7 @@ function zfs_status_create_pool_rows($zpoolListData) {
 		$output .=			'<div class="table-responsive">';
 		$output .=				'<table class="table table-striped table-hover table-condensed">';
 		$output .=					'<thead>';
+		$output .=						zfs_status_create_meta_rows($zpool);
 		$output .=						'<tr>';
 		$output .=							'<th>'.gettext("Name").'</th>';
 		$output .=							'<th>'.gettext("State").'</th>';
@@ -200,6 +212,47 @@ function zfs_status_create_pool_rows($zpoolListData) {
 }
 
 /*
+ * zfs_status_create_meta_rows($poolData)
+ *
+ * Renders pool-level metadata as <tr> rows for insertion into <thead> above
+ * the vdev column headers. Status and action rows appear only when non-empty;
+ * the errors row is always rendered, with a warning icon when error_count > 0.
+ */
+function zfs_status_create_meta_rows($poolData) {
+	$output = '';
+
+	$statusMsg = trim($poolData['status'] ?? '');
+	if ($statusMsg !== '') {
+		$output .= '<tr><td colspan="5"><small>'
+		         . '<i class="fa-solid fa-triangle-exclamation text-warning"></i> '
+		         . htmlspecialchars($statusMsg, ENT_QUOTES, 'UTF-8')
+		         . '</small></td></tr>';
+	}
+
+	$actionMsg = trim($poolData['action'] ?? '');
+	if ($actionMsg !== '') {
+		$output .= '<tr><td colspan="5"><small class="text-muted">'
+		         . htmlspecialchars($actionMsg, ENT_QUOTES, 'UTF-8')
+		         . '</small></td></tr>';
+	}
+
+	$errorCount = (int)($poolData['error_count'] ?? 0);
+	if ($errorCount === 0) {
+		$output .= '<tr><td colspan="5"><small>'
+		         . gettext('No known data errors')
+		         . '</small></td></tr>';
+	} else {
+		$errText = sprintf(gettext('%d data error(s) — see detail page for list'), $errorCount);
+		$output .= '<tr><td colspan="5"><small class="text-danger">'
+		         . '<i class="fa-solid fa-triangle-exclamation text-warning"></i> '
+		         . htmlspecialchars($errText, ENT_QUOTES, 'UTF-8')
+		         . '</small></td></tr>';
+	}
+
+	return $output;
+}
+
+/*
  * zfs_status_create_detail_table($poolData)
  *
  * Renders the vdev detail rows for a single pool by recursively walking the
@@ -209,24 +262,6 @@ function zfs_status_create_pool_rows($zpoolListData) {
 function zfs_status_create_detail_table($poolData) {
 	$output = '';
 
-	// Status row — pool-level warning message (e.g. unsupported features)
-	$statusMsg = trim($poolData['status'] ?? '');
-	if ($statusMsg !== '') {
-		$output .= '<tr><td colspan="5"><small>'
-		         . '<i class="fa-solid fa-triangle-exclamation text-warning"></i> '
-		         . htmlspecialchars($statusMsg, ENT_QUOTES, 'UTF-8')
-		         . '</small></td></tr>';
-	}
-
-	// Action row — recommended remediation string
-	$actionMsg = trim($poolData['action'] ?? '');
-	if ($actionMsg !== '') {
-		$output .= '<tr><td colspan="5"><small class="text-muted">'
-		         . htmlspecialchars($actionMsg, ENT_QUOTES, 'UTF-8')
-		         . '</small></td></tr>';
-	}
-
-	// Vdev tree rows
 	foreach ($poolData['vdevs'] ?? [] as $vdev) {
 		foreach (parse_vdev_tree($vdev) as $row) {
 			$indent = str_repeat("\xc2\xa0\xc2\xa0", $row['depth'] * 2);
@@ -242,19 +277,6 @@ function zfs_status_create_detail_table($poolData) {
 			$output .=	'</tr>';
 		}
 	}
-
-	// Errors row — always last, fixed-width font
-	$errorCount = (int)($poolData['error_count'] ?? 0);
-	if ($errorCount === 0) {
-		$errText  = gettext('No known data errors');
-		$errClass = '';
-	} else {
-		$errText  = sprintf(gettext('%d data error(s) — see detail page for list'), $errorCount);
-		$errClass = ' class="text-danger"';
-	}
-	$output .= "<tr><td colspan=\"5\"><code{$errClass}>"
-	         . htmlspecialchars($errText, ENT_QUOTES, 'UTF-8')
-	         . '</code></td></tr>';
 
 	return $output;
 }

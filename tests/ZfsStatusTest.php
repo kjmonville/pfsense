@@ -350,6 +350,19 @@ class ZfsStatusTest extends TestCase {
 		$this->assertCount(4, $rows); // raidz1-0 + 3 disks
 	}
 
+	public function test_parse_vdev_tree_cant_open_state_displays_as_unavail(): void {
+		$leaf = [
+			'name'            => 'da0',
+			'vdev_type'       => 'disk',
+			'state'           => 'CANT_OPEN',
+			'read_errors'     => 0,
+			'write_errors'    => 0,
+			'checksum_errors' => 0,
+		];
+		$rows = parse_vdev_tree($leaf);
+		$this->assertEquals('UNAVAIL', $rows[0]['state']);
+	}
+
 	public function test_parse_vdev_tree_missing_vdevs_key_does_not_recurse(): void {
 		$leaf = [
 			'name'            => 'da0',
@@ -496,11 +509,10 @@ class ZfsStatusTest extends TestCase {
 	// zfs_status_create_detail_table()
 	// -------------------------------------------------------------------------
 
-	public function test_detail_table_empty_vdevs_still_renders_errors_row(): void {
+	public function test_detail_table_empty_vdevs_returns_empty_string(): void {
 		$pool = ['vdevs' => [], 'error_count' => 0];
 		$html = zfs_status_create_detail_table($pool);
-		$this->assertStringContainsString('<code>', $html);
-		$this->assertStringContainsString('No known data errors', $html);
+		$this->assertSame('', $html);
 	}
 
 	public function test_detail_table_mirror_pool_contains_expected_names(): void {
@@ -673,5 +685,65 @@ class ZfsStatusTest extends TestCase {
 		// Detail sub-table must appear inside the expansion row
 		$this->assertStringContainsString('mirror-0', $html);
 		$this->assertStringContainsString('da0p4',    $html);
+	}
+
+	// -------------------------------------------------------------------------
+	// zfs_status_create_meta_rows()
+	// -------------------------------------------------------------------------
+
+	public function test_meta_rows_no_errors_shows_no_known_data_errors(): void {
+		$pool = ['error_count' => 0];
+		$html = zfs_status_create_meta_rows($pool);
+		$this->assertStringContainsString('No known data errors', $html);
+	}
+
+	public function test_meta_rows_does_not_use_code_element(): void {
+		$pool = ['error_count' => 3, 'status' => 'Something', 'action' => 'Do something'];
+		$html = zfs_status_create_meta_rows($pool);
+		$this->assertStringNotContainsString('<code', $html);
+	}
+
+	public function test_meta_rows_no_errors_omits_warning_icon(): void {
+		$pool = ['error_count' => 0];
+		$html = zfs_status_create_meta_rows($pool);
+		$this->assertStringNotContainsString('fa-triangle-exclamation', $html);
+	}
+
+	public function test_meta_rows_with_errors_shows_warning_icon(): void {
+		$pool = ['error_count' => 3];
+		$html = zfs_status_create_meta_rows($pool);
+		$this->assertStringContainsString('fa-triangle-exclamation', $html);
+	}
+
+	public function test_meta_rows_with_errors_uses_danger_class(): void {
+		$pool = ['error_count' => 3];
+		$html = zfs_status_create_meta_rows($pool);
+		$this->assertStringContainsString('text-danger', $html);
+	}
+
+	public function test_meta_rows_status_message_shown_when_non_empty(): void {
+		$pool = ['error_count' => 0, 'status' => 'Pool has unsupported features'];
+		$html = zfs_status_create_meta_rows($pool);
+		$this->assertStringContainsString('Pool has unsupported features', $html);
+		$this->assertStringContainsString('fa-triangle-exclamation', $html);
+	}
+
+	public function test_meta_rows_blank_status_not_rendered(): void {
+		$pool = ['error_count' => 0, 'status' => ''];
+		$html = zfs_status_create_meta_rows($pool);
+		$this->assertStringNotContainsString('fa-triangle-exclamation', $html);
+	}
+
+	public function test_meta_rows_action_message_shown_when_non_empty(): void {
+		$pool = ['error_count' => 0, 'action' => 'Run zpool upgrade'];
+		$html = zfs_status_create_meta_rows($pool);
+		$this->assertStringContainsString('Run zpool upgrade', $html);
+		$this->assertStringContainsString('text-muted', $html);
+	}
+
+	public function test_meta_rows_blank_action_not_rendered(): void {
+		$pool = ['error_count' => 0, 'action' => ''];
+		$html = zfs_status_create_meta_rows($pool);
+		$this->assertStringNotContainsString('text-muted', $html);
 	}
 }
