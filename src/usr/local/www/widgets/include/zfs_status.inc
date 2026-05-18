@@ -70,6 +70,7 @@ function get_zpool_json(?callable $runner = null) {
 			'scan'        => $pool['scan']        ?? [],
 			'error_count' => $pool['error_count'] ?? 0,
 			'vdevs'       => $pool['vdevs']       ?? [],
+			'spares'      => $pool['spares']      ?? [],
 			'size'        => $props['size']['value']          ?? '-',
 			'alloc'       => $props['allocated']['value']     ?? '-',
 			'free'        => $props['free']['value']          ?? '-',
@@ -126,8 +127,10 @@ function display_vdev_state(string $state): string {
 function health_color($health) {
 	switch ($health) {
 		case 'ONLINE':
+		case 'AVAIL':
 			return "text-success";
 		case 'DEGRADED':
+		case 'INUSE':
 			return "text-warning";
 		default:
 			return "text-danger";
@@ -283,6 +286,23 @@ function zfs_status_create_detail_table($poolData) {
 			$output .=		'<td>' . (int)$row['read']  . '</td>';
 			$output .=		'<td>' . (int)$row['write'] . '</td>';
 			$output .=		'<td>' . (int)$row['cksum'] . '</td>';
+			$output .=	'</tr>';
+		}
+	}
+
+	$spares = $poolData['spares'] ?? [];
+	if (!empty($spares)) {
+		// Group header at depth 0 (same level as root vdev)
+		$output .= '<tr><th>' . gettext('spares') . '</th><td></td><td></td><td></td><td></td></tr>';
+
+		// Spare devices at depth 1 (same indent as mirror/raidz groups)
+		$indent = str_repeat("\xc2\xa0\xc2\xa0", 2);
+		foreach ($spares as $spare) {
+			$spareState = display_vdev_state($spare['state'] ?? '');
+			$output .=	'<tr>';
+			$output .=		'<th>' . $indent . htmlspecialchars($spare['name'] ?? '', ENT_QUOTES, 'UTF-8') . '</th>';
+			$output .=		'<td><span class="' . health_color($spareState) . '">' . htmlspecialchars($spareState, ENT_QUOTES, 'UTF-8') . '</span></td>';
+			$output .=		'<td>-</td><td>-</td><td>-</td>';
 			$output .=	'</tr>';
 		}
 	}

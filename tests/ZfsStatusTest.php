@@ -213,6 +213,14 @@ class ZfsStatusTest extends TestCase {
 		$this->assertEquals('text-danger', health_color('REMOVED'));
 	}
 
+	public function test_health_color_avail_is_success(): void {
+		$this->assertEquals('text-success', health_color('AVAIL'));
+	}
+
+	public function test_health_color_inuse_is_warning(): void {
+		$this->assertEquals('text-warning', health_color('INUSE'));
+	}
+
 	// -------------------------------------------------------------------------
 	// parse_vdev_tree()
 	// -------------------------------------------------------------------------
@@ -505,6 +513,25 @@ class ZfsStatusTest extends TestCase {
 		);
 	}
 
+	public function test_get_zpool_json_captures_spares(): void {
+		$statusPools = [
+			'tank' => [
+				'name'        => 'tank',
+				'state'       => 'ONLINE',
+				'error_count' => 0,
+				'vdevs'       => [],
+				'spares'      => [
+					'da2' => ['name' => 'da2', 'vdev_type' => 'disk', 'class' => 'spare', 'state' => 'AVAIL'],
+				],
+			],
+		];
+		$runner = $this->makeRunner($statusPools, []);
+		$result = get_zpool_json($runner);
+
+		$this->assertArrayHasKey('spares', $result['tank']);
+		$this->assertArrayHasKey('da2', $result['tank']['spares']);
+	}
+
 	// -------------------------------------------------------------------------
 	// zfs_status_create_detail_table()
 	// -------------------------------------------------------------------------
@@ -578,6 +605,58 @@ class ZfsStatusTest extends TestCase {
 		$this->assertLessThan($posMirror, $posPfSense);
 		$this->assertLessThan($posDa0p4,  $posMirror);
 		$this->assertLessThan($posDa1p4,  $posDa0p4);
+	}
+
+	public function test_detail_table_spares_renders_group_header(): void {
+		$pool = [
+			'vdevs'  => [],
+			'spares' => [
+				'da2' => ['name' => 'da2', 'state' => 'AVAIL'],
+			],
+		];
+		$html = zfs_status_create_detail_table($pool);
+		$this->assertStringContainsString('spares', $html);
+	}
+
+	public function test_detail_table_spares_renders_device_name_and_state(): void {
+		$pool = [
+			'vdevs'  => [],
+			'spares' => [
+				'da2' => ['name' => 'da2', 'state' => 'AVAIL'],
+			],
+		];
+		$html = zfs_status_create_detail_table($pool);
+		$this->assertStringContainsString('da2', $html);
+		$this->assertStringContainsString('AVAIL', $html);
+		$this->assertStringContainsString('text-success', $html);
+	}
+
+	public function test_detail_table_spares_appear_after_vdev_tree(): void {
+		$pool = [
+			'vdevs'  => $this->singleDiskPoolVdevs,
+			'spares' => [
+				'spare0' => ['name' => 'spare0', 'state' => 'AVAIL'],
+			],
+		];
+		$html = zfs_status_create_detail_table($pool);
+		$this->assertGreaterThan(strpos($html, 'da2'), strpos($html, 'spare0'));
+	}
+
+	public function test_detail_table_no_spares_key_renders_no_spare_section(): void {
+		$pool = ['vdevs' => []];
+		$html = zfs_status_create_detail_table($pool);
+		$this->assertStringNotContainsString('spares', $html);
+	}
+
+	public function test_detail_table_inuse_spare_uses_warning_color(): void {
+		$pool = [
+			'vdevs'  => [],
+			'spares' => [
+				'da2' => ['name' => 'da2', 'state' => 'INUSE'],
+			],
+		];
+		$html = zfs_status_create_detail_table($pool);
+		$this->assertStringContainsString('text-warning', $html);
 	}
 
 	// -------------------------------------------------------------------------
