@@ -204,6 +204,7 @@ function zfs_status_create_pool_rows($zpoolListData) {
 		$output .=					'</tbody>';
 		$output .=				'</table>';
 		$output .=			'</div>';
+		$output .=			zfs_status_errors_row($zpool);
 		$output .=		'</td>';
 		$output .=	'</tr>';
 	}
@@ -215,8 +216,7 @@ function zfs_status_create_pool_rows($zpoolListData) {
  * zfs_status_create_meta_rows($poolData)
  *
  * Renders pool-level metadata as <tr> rows for insertion into <thead> above
- * the vdev column headers. Status and action rows appear only when non-empty;
- * the errors row is always rendered, with a warning icon when error_count > 0.
+ * the vdev column headers. Status and action rows appear only when non-empty.
  */
 function zfs_status_create_meta_rows($poolData) {
 	$output = '';
@@ -236,20 +236,29 @@ function zfs_status_create_meta_rows($poolData) {
 		         . '</small></td></tr>';
 	}
 
+	return $output;
+}
+
+/*
+ * zfs_status_errors_row($poolData)
+ *
+ * Renders a standalone errors line shown below the vdev treeview. A green
+ * checkmark precedes the text when there are no errors; a warning icon and
+ * danger color are used when error_count > 0.
+ */
+function zfs_status_errors_row($poolData) {
 	$errorCount = (int)($poolData['error_count'] ?? 0);
 	if ($errorCount === 0) {
-		$output .= '<tr><td colspan="5"><small>'
-		         . gettext('No known data errors')
-		         . '</small></td></tr>';
-	} else {
-		$errText = sprintf(gettext('%d data error(s) — see detail page for list'), $errorCount);
-		$output .= '<tr><td colspan="5"><small class="text-danger">'
-		         . '<i class="fa-solid fa-triangle-exclamation text-warning"></i> '
-		         . htmlspecialchars($errText, ENT_QUOTES, 'UTF-8')
-		         . '</small></td></tr>';
+		return '<small>'
+		     . '<i class="fa-solid fa-circle-check text-success"></i> '
+		     . gettext('No known data errors')
+		     . '</small>';
 	}
-
-	return $output;
+	$errText = sprintf(gettext('%d data error(s) — see detail page for list'), $errorCount);
+	return '<small class="text-danger">'
+	     . '<i class="fa-solid fa-triangle-exclamation text-warning"></i> '
+	     . htmlspecialchars($errText, ENT_QUOTES, 'UTF-8')
+	     . '</small>';
 }
 
 /*

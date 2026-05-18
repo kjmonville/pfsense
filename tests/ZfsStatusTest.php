@@ -691,34 +691,16 @@ class ZfsStatusTest extends TestCase {
 	// zfs_status_create_meta_rows()
 	// -------------------------------------------------------------------------
 
-	public function test_meta_rows_no_errors_shows_no_known_data_errors(): void {
-		$pool = ['error_count' => 0];
-		$html = zfs_status_create_meta_rows($pool);
-		$this->assertStringContainsString('No known data errors', $html);
-	}
-
 	public function test_meta_rows_does_not_use_code_element(): void {
-		$pool = ['error_count' => 3, 'status' => 'Something', 'action' => 'Do something'];
+		$pool = ['status' => 'Something', 'action' => 'Do something'];
 		$html = zfs_status_create_meta_rows($pool);
 		$this->assertStringNotContainsString('<code', $html);
 	}
 
-	public function test_meta_rows_no_errors_omits_warning_icon(): void {
-		$pool = ['error_count' => 0];
+	public function test_meta_rows_no_warning_icon_when_no_status_or_action(): void {
+		$pool = [];
 		$html = zfs_status_create_meta_rows($pool);
 		$this->assertStringNotContainsString('fa-triangle-exclamation', $html);
-	}
-
-	public function test_meta_rows_with_errors_shows_warning_icon(): void {
-		$pool = ['error_count' => 3];
-		$html = zfs_status_create_meta_rows($pool);
-		$this->assertStringContainsString('fa-triangle-exclamation', $html);
-	}
-
-	public function test_meta_rows_with_errors_uses_danger_class(): void {
-		$pool = ['error_count' => 3];
-		$html = zfs_status_create_meta_rows($pool);
-		$this->assertStringContainsString('text-danger', $html);
 	}
 
 	public function test_meta_rows_status_message_shown_when_non_empty(): void {
@@ -745,5 +727,39 @@ class ZfsStatusTest extends TestCase {
 		$pool = ['error_count' => 0, 'action' => ''];
 		$html = zfs_status_create_meta_rows($pool);
 		$this->assertStringNotContainsString('text-muted', $html);
+	}
+
+	// -------------------------------------------------------------------------
+	// zfs_status_errors_row()
+	// -------------------------------------------------------------------------
+
+	public function test_errors_row_no_errors_shows_checkmark(): void {
+		$html = zfs_status_errors_row(['error_count' => 0]);
+		$this->assertStringContainsString('fa-circle-check text-success', $html);
+	}
+
+	public function test_errors_row_no_errors_shows_no_known_data_errors(): void {
+		$html = zfs_status_errors_row(['error_count' => 0]);
+		$this->assertStringContainsString('No known data errors', $html);
+	}
+
+	public function test_errors_row_no_errors_omits_warning_icon(): void {
+		$html = zfs_status_errors_row(['error_count' => 0]);
+		$this->assertStringNotContainsString('fa-triangle-exclamation', $html);
+	}
+
+	public function test_errors_row_with_errors_shows_warning_icon(): void {
+		$html = zfs_status_errors_row(['error_count' => 3]);
+		$this->assertStringContainsString('fa-triangle-exclamation', $html);
+	}
+
+	public function test_errors_row_with_errors_uses_danger_class(): void {
+		$html = zfs_status_errors_row(['error_count' => 3]);
+		$this->assertStringContainsString('text-danger', $html);
+	}
+
+	public function test_errors_row_does_not_use_code_element(): void {
+		$html = zfs_status_errors_row(['error_count' => 3]);
+		$this->assertStringNotContainsString('<code', $html);
 	}
 }
